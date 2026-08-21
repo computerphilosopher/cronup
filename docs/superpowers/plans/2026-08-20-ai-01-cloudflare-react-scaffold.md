@@ -96,6 +96,7 @@ Expected: `package-lock.json` is created and `package.json` contains only `hono`
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "types": ["vite/client"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true
@@ -274,9 +275,7 @@ Run: `npm exec tsc -- --showConfig -p tsconfig.app.json`
 
 Expected: TypeScript prints the resolved application configuration without a parse error.
 
-Run: `npm exec wrangler -- deploy --dry-run --outdir /tmp/cronup-ai01-dry-run`
-
-Expected: Wrangler resolves the Worker, D1 draft binding, asset configuration, and Cron Trigger without deploying or requiring a Cloudflare login.
+The Wrangler dry-run is deferred until Task 3 because it must resolve the Worker entrypoint created in Task 2.
 
 ### Task 2: Drive the Worker and React shells from failing tests
 
@@ -455,6 +454,10 @@ Expected: exit code 0 with no output.
 Run: `npm test`
 
 Expected: Worker and application suites both PASS.
+
+Run: `npm exec wrangler -- deploy --dry-run --outdir /tmp/cronup-ai01-dry-run`
+
+Expected: Wrangler resolves the Worker, D1 draft binding, asset configuration, and Cron Trigger without deploying or requiring a Cloudflare login.
 
 - [ ] **Step 3: Build the Worker and browser assets**
 

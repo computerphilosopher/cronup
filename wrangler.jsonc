@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cronup",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-20",
+  "d1_databases": [{ "binding": "DB" }],
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/", "/api/*", "/ping/*"]
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  }
+}

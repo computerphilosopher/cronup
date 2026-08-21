@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "types": [
+      "vitest/globals",
+      "@cloudflare/vitest-pool-workers/types",
+      "@testing-library/jest-dom"
+    ]
+  },
+  "include": ["./**/*.ts", "./**/*.tsx", "../worker", "../src"]
+}
