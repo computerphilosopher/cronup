@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Cloudflare Workers, Vitest, `@cloudflare/vitest-pool-workers`
 
-**Source spec:** `docs/specs/2026-08-24-uptime-only-mvp-scope-design.md`
+**Source spec:** `docs/superpowers/specs/2026-08-24-uptime-only-mvp-scope-design.md`
 
 ---
 
