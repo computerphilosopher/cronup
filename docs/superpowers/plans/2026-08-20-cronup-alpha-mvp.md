@@ -36,6 +36,12 @@ MVP의 사용자 흐름은 `Basic Auth → URL 생성 → 1분 자동 GET → �
 - DNS-aware SSRF policy, VPC egress integration
 - incidents, rollups, users/teams/roles
 
+## Existing implementation status
+
+- AI-01의 Cloudflare Worker + React scaffold는 `b1efc19`에서 이미 구현되어 active task에서 제외한다.
+- `codex/ai-02-domain-validation`의 `7a26519`는 아직 `main`에 병합되지 않은 이전 범위의 실험 브랜치다. job/event/webhook 타입이 포함되어 uptime-only MVP 기준으로 완료 처리하거나 병합하지 않는다.
+- 실제 다음 구현은 uptime-only 계약에 맞춘 AI-02 domain/validation부터 시작한다.
+
 ## File map
 
 ```text
