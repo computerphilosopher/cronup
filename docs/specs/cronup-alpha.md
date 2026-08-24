@@ -2,11 +2,17 @@
 
 ## 1. Product purpose
 
-CronUp은 자신의 Cloudflare 계정에 배포해 웹사이트가 응답하는지 확인하는 단일 관리자용 uptime monitor다. 이번 MVP가 검증하는 질문은 하나다.
+작은 EC2 한 대로 운영하는 tiny project에도 외부 모니터링은 필요하다. 그러나 전통적인 모니터링 제품은 agent 실행 서버, 분산 조정 계층, 별도 시계열 저장소처럼 감시 대상에 버금가는 인프라와 운영비를 요구할 수 있다. 이 프로젝트는 작은 프로젝트의 모니터링이 프로젝트 자체보다 무거워서는 안 된다는 문제의식에서 출발한다.
 
-> 관리자가 URL을 등록하면 Cloudflare Worker가 주기적으로 확인하고 현재 상태를 보여줄 수 있는가?
+CronUp은 사용자의 Cloudflare 계정에 직접 배포하는 단일 관리자용 uptime monitor다. Cloudflare Workers, Cron Triggers, D1, Static Assets를 함께 사용해 별도 상시 서버와 시계열 데이터베이스 없이 HTTP(S) endpoint의 현재 상태를 확인한다. Cloudflare Free plan에서 작은 배포를 운영할 수 있는 비용 구조를 지향하지만, 특정 사용량의 무료 운영을 보장하지는 않는다.
+
+이번 MVP가 검증하는 질문은 하나다.
+
+> 작은 프로젝트의 관리자가 별도 모니터링 서버를 운영하지 않고 URL을 등록해 현재 uptime 상태를 확인할 수 있는가?
 
 Cron job heartbeat, 알림 전송, 이벤트 분석, 공개 demo는 이번 릴리스의 제품 약속이 아니다. 이 문서에서 명시한 기능 외에는 MVP 기능으로 간주하지 않는다.
+
+`CronUp`은 개발 중 사용하는 임시 제품명이다. uptime-only 제품에 맞는 이름은 MVP 방향이 검증된 뒤 결정하며, 제품명이 확정될 때 repository 이름도 함께 변경한다.
 
 ## 2. Stack and deployment boundary
 
@@ -21,6 +27,8 @@ Cron job heartbeat, 알림 전송, 이벤트 분석, 공개 demo는 이번 릴�
 Cloudflare Cron Trigger와 Static Assets는 플랫폼 기능이다. runtime dependency는 `hono`, `react`, `react-dom`만 사용한다. ORM, query library, router, Queue, Durable Objects, KV, R2, Redis, 외부 DB와 외부 notification provider는 사용하지 않는다.
 
 배포 단위는 Worker 하나다. Worker는 `fetch()`로 API와 React 자산을 제공하고, `scheduled()`로 uptime tick을 처리한다. 제품은 BYO Cloudflare, 단일 관리자, best-effort 환경이며 SaaS 용량·실행 시각·가용성 SLA를 약속하지 않는다.
+
+첫 제품은 BYO Cloudflare 배포를 중심으로 한다. 사용자·조직·과금·중앙 control plane을 미리 만들지 않으며 monitor 데이터와 secret은 배포 소유자의 Cloudflare 계정 안에 둔다. 향후 관리형 배포를 제공할 가능성은 열어 두되, MVP 아키텍처와 완료 조건은 관리형 SaaS를 전제로 하지 않는다.
 
 ## 3. Monitor model
 
@@ -202,6 +210,9 @@ npm run build
 4. DNS/redirect-aware egress policy와 Workers VPC integration
 5. Public fixture demo와 public status page
 6. Incident lifecycle, rollups, multiple users/teams
+7. 수요 검증 후 설치와 업그레이드를 대행하는 선택적 managed offering 검토
+
+관리형 offering은 확정된 제품 약속이 아니다. 도입하더라도 BYO 배포의 단일 소유자·단일 D1 데이터 경계를 깨지 않고, 별도 control plane이 배포 생명주기를 대행하는 방향을 우선 검토한다.
 
 ## 14. License
 

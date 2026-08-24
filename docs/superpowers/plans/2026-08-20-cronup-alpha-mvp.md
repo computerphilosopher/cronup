@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cloudflare 계정 하나에 직접 배포해 HTTP(S) URL의 현재 uptime 상태를 확인하고 관리하는 작은 CronUp MVP를 완성한다.
+**Goal:** tiny project보다 무거운 모니터링 인프라를 운영하지 않고, Cloudflare 계정 하나에 직접 배포해 HTTP(S) URL의 현재 uptime 상태를 확인하는 MVP를 완성한다.
 
 **Architecture:** 하나의 Cloudflare Worker가 Hono 기반 admin API와 `scheduled()` uptime runner를 제공하고, 같은 배포물의 React/Vite 정적 자산이 현재 monitor 상태를 보여준다. D1에는 현재 상태만 저장한다. 이벤트, heartbeat, webhook, demo 전용 계층은 만들지 않는다.
 
@@ -10,11 +10,17 @@
 
 **Source spec:** `docs/specs/cronup-alpha.md`
 
+**Product thesis:** 작은 프로젝트에도 외부 모니터링은 필요하지만 모니터링 시스템이 프로젝트 자체만큼 무거워서는 안 된다. MVP는 별도 VM, agent fleet, coordination service, 전용 시계열 데이터베이스 없이 Workers, Cron Triggers, D1, Static Assets만으로 현재 uptime을 제공한다. Cloudflare Free plan의 관대한 한도를 활용하되 무료 운영 자체를 제품 보장으로 약속하지 않는다.
+
 ---
 
 ## Scope lock
 
 MVP의 사용자 흐름은 `Basic Auth → URL 생성 → 1분 자동 GET → 현재 상태 조회 → 삭제`다.
+
+배포 전략은 BYO Cloudflare 우선이다. 사용자·조직·과금·중앙 control plane은 만들지 않는다. 향후 managed offering은 선택지로 남기지만 MVP 구현이 이를 선행 설계하지 않으며, 가능한 경우 BYO 배포의 단일 소유자·단일 D1 경계를 유지한다.
+
+`CronUp`은 임시 이름이다. uptime 제품의 최종 이름이 정해지면 repository 이름도 함께 변경하며, 그 전까지 기존 package, Worker, Basic Auth realm 이름은 유지한다.
 
 포함:
 

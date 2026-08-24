@@ -2,6 +2,10 @@
 
 ## 배경
 
+작은 EC2 한 대로 운영하는 tiny project에도 외부 모니터링은 필요하지만, 기존 모니터링 아키텍처는 agent 실행 서버, 분산 조정 계층, 별도 시계열 데이터베이스 등 감시 대상과 비슷하거나 더 큰 운영 기반을 요구할 수 있다. 이 프로젝트의 제품 원칙은 “작은 프로젝트보다 무겁지 않은 모니터링”이다.
+
+Cloudflare의 Workers, Cron Triggers, D1, Static Assets를 조합하면 별도 상시 서버 없이 외부 uptime monitor를 구성할 수 있다. Cloudflare Free plan은 작은 설치의 비용을 낮추는 중요한 기반이지만, 제품은 무료 한도나 영구적인 가격 정책을 보장하지 않는다. 핵심 가치는 특정 가격표가 아니라 사용자의 Cloudflare 계정에 배포해 중앙 모니터링 인프라의 운영 부담을 제거하는 것이다.
+
 기존 알파 계획은 uptime 감시 외에 job heartbeat, 상태 전이 알림, Generic Webhook, 이벤트 이력, retention, 공개 demo까지 한 번에 포함했다. 각 기능은 개별적으로 타당하지만, 첫 MVP가 검증해야 할 핵심 질문인 “Cloudflare에 직접 배포한 작은 앱이 URL을 주기적으로 확인하고 현재 상태를 보여줄 수 있는가?”보다 범위가 넓다.
 
 이번 축소의 목표는 AI-01에서 만든 Cloudflare Worker + React 기반 위에 uptime 감시의 한 줄짜리 사용자 흐름만 완성하는 것이다.
@@ -13,6 +17,8 @@
 ## 제품 범위
 
 MVP는 한 명의 배포 관리자가 사용하는 BYO Cloudflare 애플리케이션이다.
+
+uptime은 광범위한 observability platform을 축소한 임시 기능이 아니라 첫 제품의 중심 기능이다. MVP는 전체 시계열 분석이나 범용 telemetry 수집 대신, HTTP(S) endpoint의 현재 가용성을 최소 운영비로 확인하는 데 집중한다.
 
 포함한다.
 
@@ -35,6 +41,11 @@ MVP에서 제외하고 로드맵으로 이동한다.
 - retry, incident, outbox, provider별 알림
 - DNS 재검사, redirect 체인 검사, 사설·예약 IP 전체 분류 같은 고급 SSRF 정책
 - 사용자·팀·세션·역할
+- 관리형 SaaS control plane, 가입, 조직, 과금, 중앙 데이터 저장
+
+첫 릴리스는 BYO 배포만 제공한다. 향후 설치가 필요 없는 managed offering을 검토할 수 있지만, 이를 위해 지금 multi-tenant 계층을 만들지는 않는다. 가능한 후속 구조는 BYO 배포의 데이터 경계를 유지한 채 별도 control plane이 설치와 업그레이드만 대행하는 형태다.
+
+`CronUp`은 개발 중 임시 이름이다. uptime 제품의 최종 이름이 확정되면 repository 이름도 함께 변경한다. 이름 확정은 MVP 구현의 선행 조건이 아니다.
 
 ## 아키텍처
 
@@ -149,3 +160,5 @@ API 오류는 `{ error: { code, message } }` 형태를 사용한다. 잘못된 �
 ## 완료 기준
 
 MVP는 배포 관리자가 인증 후 URL을 등록하고, Cron Trigger가 URL을 주기적으로 확인하며, 현재 상태를 대시보드에서 확인하고 monitor를 삭제할 수 있을 때 완료다. 이 흐름에 직접 참여하지 않는 저장·알림·데모 기능은 완료 조건에 포함하지 않는다.
+
+제품 가설은 이 사용자 흐름이 별도 VM, agent fleet, 분산 coordination service, 전용 시계열 데이터베이스 없이 하나의 Cloudflare 배포로 동작할 때 검증된다. 관리형 SaaS와 최종 제품명은 별도의 후속 결정이다.
