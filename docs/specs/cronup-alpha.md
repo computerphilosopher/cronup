@@ -1,264 +1,208 @@
-# CronUp Alpha Design
+# CronUp Uptime Alpha Specification
 
-## 1. Product summary
+## 1. Product purpose
 
-CronUp is an AGPL-licensed, bring-your-own-Cloudflare monitoring application for broke developers. It combines two core capabilities:
+CronUp은 자신의 Cloudflare 계정에 배포해 웹사이트가 응답하는지 확인하는 단일 관리자용 uptime monitor다. 이번 MVP가 검증하는 질문은 하나다.
 
-- HTTP(S) uptime monitoring
-- Dead-man monitoring for cron and background jobs
+> 관리자가 URL을 등록하면 Cloudflare Worker가 주기적으로 확인하고 현재 상태를 보여줄 수 있는가?
 
-The alpha validates only two questions: whether a website is currently responding successfully, and whether a scheduled job sent its heartbeat before its deadline. It is not a public multi-tenant SaaS and does not promise retry, delivery, capacity, or scheduling guarantees.
+Cron job heartbeat, 알림 전송, 이벤트 분석, 공개 demo는 이번 릴리스의 제품 약속이 아니다. 이 문서에서 명시한 기능 외에는 MVP 기능으로 간주하지 않는다.
 
-The positioning is:
+## 2. Stack and deployment boundary
 
-> Uptime Kuma + Cronitor, but serverless and almost free.
+제품은 다음 다섯 기술만 사용한다.
 
-## 2. Alpha stack
+1. TypeScript
+2. Cloudflare Workers
+3. Hono
+4. Cloudflare D1 raw SQL
+5. React + Vite
 
-The product stack is intentionally limited to five technologies:
+Cloudflare Cron Trigger와 Static Assets는 플랫폼 기능이다. runtime dependency는 `hono`, `react`, `react-dom`만 사용한다. ORM, query library, router, Queue, Durable Objects, KV, R2, Redis, 외부 DB와 외부 notification provider는 사용하지 않는다.
 
-1. **TypeScript** for both the browser and Worker code
-2. **Cloudflare Workers** for the API, heartbeat ingestion, and scheduled checks
-3. **Hono** for HTTP routing
-4. **Cloudflare D1 with raw SQL** for persistence
-5. **React with Vite** for a single-screen administration dashboard
+배포 단위는 Worker 하나다. Worker는 `fetch()`로 API와 React 자산을 제공하고, `scheduled()`로 uptime tick을 처리한다. 제품은 BYO Cloudflare, 단일 관리자, best-effort 환경이며 SaaS 용량·실행 시각·가용성 SLA를 약속하지 않는다.
 
-Cloudflare Cron Triggers and Static Assets are platform features rather than separate services. Wrangler is the required development and deployment CLI, and npm is the package manager.
-
-Runtime dependencies are limited to `hono`, `react`, and `react-dom`. The alpha does not use an ORM, Zod, React Router, TanStack Query, Tailwind, Queue, Durable Objects, KV, R2, Redis, or an external database.
-
-The application is deployed as one Worker. Its entrypoint exposes `fetch()` and `scheduled()`, while schedule calculation and status transitions remain small, pure TypeScript functions. This retains a thin foundation for later versions without introducing repository, queue, or notification abstractions prematurely.
-
-Cloudflare's official Vite plugin provides the local Workers runtime and builds the React assets for deployment. See the [React and Vite guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/react/) and [Vite plugin documentation](https://developers.cloudflare.com/workers/vite-plugin/).
-
-## 3. Runtime behavior
-
-### 3.1 Shared monitor model
+## 3. Monitor model
 
 ```ts
-type MonitorType = "uptime" | "job";
+type MonitorStatus = "pending" | "healthy" | "down";
 
-type MonitorStatus =
-  | "pending"
-  | "healthy"
-  | "down"
-  | "missed";
-
-type UptimeConfig = {
+type CreateMonitorRequest = {
+  name: string;
   url: string;
 };
 
-type JobConfig = {
-  periodMinutes: number;
-  graceMinutes: number;
-};
-```
-
-All times are stored as UTC epoch milliseconds. External input is checked with small manual validation functions rather than a validation library.
-
-### 3.2 Uptime monitors
-
-- Accept only public HTTP(S) URLs.
-- Send one `GET` request on each one-minute Cron tick. The HTTP method and interval are not configurable.
-- Use a fixed 10-second timeout and follow redirects.
-- Treat a final status code from 200 through 399 as healthy.
-- Treat a status outside that range, timeout, DNS error, or network error as down.
-- Perform exactly one request per scheduled check. The alpha does not retry or confirm failures.
-- Process at most 20 uptime monitors per minute with outbound concurrency limited to five, selecting the least recently checked monitors first.
-- Defer overflow to a later tick without changing its status.
-- Leave monitor status unchanged when CronUp itself encounters an internal error.
-
-The scheduler records the latest check time and does not replay missed historical ticks after a delayed Cron Trigger.
-
-### 3.3 Job monitors
-
-Each job monitor exposes one heartbeat URL:
-
-```text
-GET /ping/:token
-```
-
-- A valid ping records a heartbeat, sets the monitor to healthy, and sets the next deadline to `received_at + period + grace`.
-- Passing the deadline changes the monitor to missed.
-- A monitor that remains missed does not create duplicate missed events on every tick.
-- Unknown tokens return no monitor information and do not update state.
-- The alpha has no `start`, `success`, `fail`, exit-code, duration, or maximum-runtime signals.
-
-The raw token is 256 random bits encoded for URLs. D1 stores only its SHA-256 hash. Job-monitor creation returns the complete heartbeat URL once. Losing the token requires deleting and recreating the monitor.
-
-### 3.4 State changes and notifications
-
-There is no incident entity in the alpha. The monitor row holds the current state, while the event table keeps seven days of raw observations.
-
-Notification rules are:
-
-- `pending -> healthy`: no notification
-- `pending|healthy -> down|missed`: failure notification
-- `down|missed -> healthy`: recovery notification
-- unchanged state: no notification
-- delete: no notification
-
-An optional `WEBHOOK_URL` Worker secret configures one global Generic Webhook destination. When the secret is absent, notifications are disabled. A state change sends the JSON payload below with a five-second timeout. A failed webhook is logged and does not roll back the monitor state. There is no provider-specific formatting, delivery log, or retry.
-
-The generic payload is:
-
-```ts
-type WebhookPayload = {
-  event: "monitor.down" | "monitor.missed" | "monitor.recovered";
-  monitor: {
-    id: string;
-    name: string;
-    type: MonitorType;
-  };
-  previousStatus: MonitorStatus;
+type MonitorDto = {
+  id: string;
+  name: string;
+  url: string;
   status: MonitorStatus;
-  observedAt: number;
-  detail?: {
-    statusCode?: number;
-    latencyMs?: number;
-  };
+  createdAt: number;
+  updatedAt: number;
+  lastCheckedAt: number | null;
+  statusCode: number | null;
+  latencyMs: number | null;
 };
 ```
 
-## 4. Persistence
+모든 시간은 UTC epoch milliseconds다. 외부 입력은 작은 수동 함수로 검증한다. monitor type discriminator, heartbeat token, deadline, event DTO는 없다.
 
-Raw SQL migrations create only two tables.
+## 4. Uptime checks
 
-### `monitors`
+- 생성 시 monitor는 `pending`이다.
+- Cloudflare Cron Trigger가 1분마다 한 번 실행한다.
+- 가장 오래 확인되지 않은 monitor를 최대 20개 선택한다.
+- 각 monitor는 HTTP `GET` 한 번만 보낸다.
+- timeout은 10초이며 retry는 하지 않는다.
+- 요청은 `redirect: "manual"`로 보낸다. redirect 대상에 추가 요청을 하지 않는다.
+- HTTP status 200~399는 `healthy`, 그 밖의 status·timeout·DNS 오류·network 오류는 `down`이다.
+- 성공/실패 결과는 monitor row의 status, `last_checked_at`, `status_code`, `latency_ms`를 갱신한다.
+- uptime check가 성공하면 하나의 결과만 저장한다. 과거에 지연된 Cron tick을 재생하지 않는다.
+- CronUp 자체의 D1 또는 코드 오류가 발생하면 해당 monitor의 기존 상태를 보존한다.
 
-Stores the monitor ID, type, name, status, JSON configuration, optional ping-token hash, optional job deadline, last check or heartbeat time, and created/updated times.
+latency는 probe 시작과 종료의 monotonic clock 차이로 계산하며 epoch 시각으로 대체하지 않는다.
 
-### `events`
+## 5. URL and request validation
 
-Stores the monitor ID, event kind, outcome, observation time, and optional HTTP status code and latency. Event kinds are limited to uptime checks, received heartbeats, and first missed-heartbeat transitions.
+생성 API는 `{ name, url }` 외의 필드를 받지 않는다.
 
-Required indexes cover uptime last-check ordering, job-deadline lookup, ping-token lookup, monitor history ordered by time, and retention cleanup. The scheduled handler removes events older than seven days in bounded batches. No hourly or daily rollups are produced.
+- 이름은 trim 후 1~100자다.
+- URL은 `http:` 또는 `https:`만 허용한다.
+- URL의 username/password는 거부한다.
+- malformed URL과 빈 문자열은 거부한다.
+- custom IPv4/IPv6 parser와 DNS lookup은 MVP에 포함하지 않는다.
+- redirect 체인과 DNS rebinding 검사는 uptime probe의 후속 보안 작업으로 남긴다.
 
-D1 access uses prepared raw SQL and small query functions. A status update and its event insert are submitted together using D1 batch semantics.
+관리 API는 Basic Auth로 보호되고, 기본 Workers egress 정책을 전제로 한다. 이 문서는 URL 검증을 완전한 SSRF 방어라고 주장하지 않는다.
 
-## 5. Authentication and API
+## 6. Persistence
 
-### 5.1 Administrator authentication
+D1에는 `monitors` 테이블 하나만 만든다.
 
-The deployment owner supplies a high-entropy `ADMIN_SECRET` as a Worker secret. There is no user table, login API, or application session.
+필드:
 
-- The administration dashboard and all `/api/*` routes require HTTP Basic Authentication.
-- `/demo` and static front-end assets are public. The demo never calls the protected API or reads D1.
-- The fixed username is `admin`; the password is `ADMIN_SECRET`.
-- Failed authentication returns `401` with `WWW-Authenticate: Basic realm="CronUp"`.
-- Mutating API requests require JSON where applicable and a same-origin `Origin` header.
-- Rotating `ADMIN_SECRET` changes the Basic Auth password immediately.
-- `/ping/:token` remains public and is authenticated by the monitor token.
+- `id TEXT PRIMARY KEY`
+- `name TEXT NOT NULL`
+- `url TEXT NOT NULL`
+- `status TEXT NOT NULL CHECK (status IN ('pending', 'healthy', 'down'))`
+- `last_checked_at INTEGER`
+- `last_status_code INTEGER`
+- `last_latency_ms INTEGER`
+- `created_at INTEGER NOT NULL`
+- `updated_at INTEGER NOT NULL`
 
-### 5.2 API surface
+필수 query는 create, list, delete, least-recently-checked selection, result update다. 모든 외부 값은 prepared statement bind로 전달한다. 이벤트 테이블, FK cascade, retention index, batch event insert는 없다.
+
+## 7. Authentication and API
+
+관리 화면 `/`과 아래 admin API는 HTTP Basic Auth가 필요하다.
 
 ```text
 GET    /api/monitors
 POST   /api/monitors
 DELETE /api/monitors/:id
-GET    /api/monitors/:id/events
-
-GET    /ping/:token
 ```
 
-Monitor creation uses a discriminated JSON body containing `type`, `name`, and the matching uptime or job configuration. Status is server-controlled and cannot be written through the API. Monitor configuration is immutable in the alpha; changing it requires deleting and recreating the monitor. Deleting a monitor cascades to its events.
+- username은 고정 `admin`이다.
+- password는 Worker secret `ADMIN_SECRET`이다.
+- secret이 없거나 비어 있으면 fail closed하고 항상 `401` challenge를 반환한다.
+- 실패 응답은 `WWW-Authenticate: Basic realm="CronUp"`를 포함한다.
+- POST/DELETE는 JSON이 필요한 경우 `application/json`과 same-origin `Origin`을 검사한다.
+- 삭제는 `204`를 반환한다. 존재하지 않는 id는 일관된 `404` 오류를 반환한다.
+- 모든 API 오류는 `{ "error": { "code": "...", "message": "..." } }` 형태다.
 
-Errors use a consistent shape:
+사용자, 팀, 세션, cookie, 역할, update endpoint는 없다.
 
-```json
-{
-  "error": {
-    "code": "invalid_request",
-    "message": "Human-readable explanation"
-  }
-}
-```
+## 8. Admin UI
 
-## 6. User interface
+React 앱은 router 없이 하나의 관리 화면을 제공한다.
 
-The React application has no client-side router and uses the browser `fetch` API with `useState` and `useEffect`.
+- monitor 이름, URL, status, 마지막 확인 시각/status code/latency를 목록으로 표시한다.
+- uptime 생성 form은 name과 URL만 받는다.
+- 삭제 전 명시적 확인을 한다.
+- loading, empty, error와 retry 상태를 표시한다.
+- 최초 로드 후 30초 polling을 수행하고 unmount 시 timer를 정리한다.
+- heartbeat URL, event history, webhook 설정, 공개 demo, chart는 표시하지 않는다.
 
-The authenticated administration screen contains:
+React Router, query library, chart library, component framework는 사용하지 않는다.
 
-- Healthy, down, missed, and pending counts
-- Uptime and job monitor lists
-- Monitor creation forms
-- Monitor deletion
-- Recent event details for the selected monitor
-
-The administration dashboard polls every 30 seconds. It uses one plain CSS file, no component framework, no chart library, and no public status page.
-
-The public `/demo` route renders the same React components with static fixture monitors and events compiled into the front-end bundle. It does not call `/api/*`, read D1, or contain real target URLs, heartbeat tokens, or webhook values. Mutation controls are hidden. The demo is a product preview, not a live public status page.
-
-## 7. Deployment
-
-The root `wrangler.jsonc` defines:
-
-- One Worker entrypoint
-- One D1 binding named `DB`
-- One `* * * * *` Cron Trigger
-- Static Assets configured for SPA fallback, with the Worker running first so it can protect the administration entry route
-- A current, pinned Workers compatibility date
-
-The documented first deployment flow is:
-
-1. Install packages and authenticate Wrangler.
-2. Provision the D1 binding through Wrangler automatic provisioning.
-3. Apply remote SQL migrations.
-4. Add the required `ADMIN_SECRET` and optional `WEBHOOK_URL` with `wrangler secret put`.
-5. Build and deploy the Worker.
-
-Because automatic resource provisioning is currently Beta, the README includes `wrangler d1 create` as a fallback. See [Wrangler automatic provisioning](https://developers.cloudflare.com/workers/wrangler/configuration/).
-
-The standard commands are `npm run dev`, `npm test`, `npm run build`, `npm run preview`, and `npm run deploy`. A Deploy to Cloudflare button is deferred until the alpha deployment flow is stable.
-
-## 8. Verification
-
-Automated tests cover only the product-critical paths:
-
-- Uptime least-recently-checked selection, 20-monitor cap, and no replay of old ticks
-- Job deadline and grace calculation
-- Every allowed status transition and notification decision
-- Basic Auth acceptance and protected dashboard/API rejection
-- Public `/demo` access without credentials and fixture-only rendering
-- Monitor creation, listing, deletion, and token-hash lookup
-- Heartbeat persistence before returning success
-- Uptime success, HTTP failure, timeout, and the absence of retry
-- First missed-job transition without duplicate events
-- Missing `WEBHOOK_URL` disabling notifications, and webhook failure not rolling back monitor state
-- Seven-day event cleanup
-
-Completion requires:
+## 9. Runtime modules
 
 ```text
+shared/domain.ts
+worker/validation.ts
+worker/auth.ts
+worker/db/monitors.ts
+worker/routes/monitors.ts
+worker/uptime.ts
+worker/index.ts
+src/App.tsx
+src/api.ts
+src/styles.css
+```
+
+모듈은 위 책임만 가진다. 이벤트·notification·job·demo 전용 module은 만들지 않는다.
+
+## 10. Deployment
+
+root `wrangler.jsonc`는 다음을 정의한다.
+
+- Worker entrypoint
+- D1 binding `DB`
+- `* * * * *` Cron Trigger
+- React Static Assets와 Worker-first API routing
+- 고정 compatibility date
+
+README의 첫 배포 흐름은 하나만 제공한다.
+
+1. `npm install`과 `wrangler login`
+2. D1 생성과 `wrangler d1 migrations apply DB --remote`
+3. `wrangler secret put ADMIN_SECRET`
+4. `npm run build`와 `npm run deploy`
+5. Basic Auth, monitor 생성, uptime 결과를 수동 확인
+
+자동 provisioning fallback, Deploy 버튼, 다중 배포 방식 비교는 문서에 넣지 않는다.
+
+## 11. Verification
+
+자동 테스트는 제품 핵심 경로만 다룬다.
+
+- domain/validation: status, DTO, name/URL 입력
+- auth: 정상·실패 credential, missing secret, same-origin mutation
+- monitors API: create/list/delete와 오류 형식
+- uptime: 200~399, HTTP failure, timeout, network failure, no retry, manual redirect
+- scheduled: 20개 cap, 오래된 순서, delayed tick replay 없음, internal error 상태 보존
+- dashboard: list, create, delete, polling, loading/empty/error
+
+완료에 필요한 명령은 다음과 같다.
+
+```bash
+npm ci
 npm test
 npm run build
 ```
 
-It also requires a local scheduled-handler smoke test and a clean-account deployment smoke test covering D1 provisioning, migration, secret configuration, and deployment.
+추가로 local scheduled smoke와 clean Cloudflare account 배포 smoke에서 Basic Auth, monitor CRUD, uptime healthy/down 전이를 확인한다. secret이나 실제 target URL은 로그와 문서에 기록하지 않는다.
 
-## 9. Explicit alpha boundaries
+## 12. Explicit MVP boundaries
 
-- BYO Cloudflare only; no central hosted SaaS
-- One administrator and at most one Generic Webhook destination configured through `WEBHOOK_URL`
-- Cloudflare Free is supported on a best-effort basis with no capacity or timing SLA
-- No guaranteed retry, delivery ordering, catch-up, or multi-region execution
-- No incident history, long-term rollups, or live public status pages; `/demo` uses static fixtures only
-- No authenticated targets, custom request bodies, response assertions, TCP, ICMP, or browser checks
-- No Docker, VPS, Postgres, or non-Cloudflare deployment
+- uptime monitor만 지원한다.
+- 단일 관리자만 지원한다.
+- 1분 Cron cadence와 best-effort 실행만 제공한다.
+- retry, catch-up, delivery guarantee, incident lifecycle, long-term history는 없다.
+- `/demo`, public status page, job heartbeat, Generic Webhook은 없다.
+- authenticated target, request body, response assertion, TCP, ICMP, browser check는 없다.
+- Docker, VPS, Postgres, non-Cloudflare deployment는 없다.
 
-Cloudflare Cron Triggers run at a minimum one-minute cadence but do not provide a fixed probe region. Platform limits and pricing must be rechecked before a later release. See [Cron Trigger documentation](https://developers.cloudflare.com/workers/configuration/cron-triggers/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), and [D1 pricing and limits](https://developers.cloudflare.com/d1/platform/pricing/).
+## 13. Roadmap after uptime MVP
 
-## 10. Roadmap after alpha
+1. Job heartbeat와 `missed` deadline 상태
+2. Event history와 7일 retention
+3. Generic Webhook과 notification outbox/retry
+4. DNS/redirect-aware egress policy와 Workers VPC integration
+5. Public fixture demo와 public status page
+6. Incident lifecycle, rollups, multiple users/teams
 
-1. Cloudflare Queues, DLQ, persistent notification outbox, and guaranteed retries
-2. Incident lifecycle and long-term uptime rollups
-3. Job `start`, `success`, `fail`, duration, and maximum-runtime signals
-4. Multiple users, teams, roles, and formal authentication
-5. Public status pages, multiple notification destinations, provider-specific adapters, and email
-6. Multi-region probes and richer HTTP assertions
-7. Portable Docker/Postgres deployment if demand justifies the additional adapter layer
+## 14. License
 
-## 11. License
-
-The repository will use `AGPL-3.0-only` unless the license policy is revised before the first public release.
+첫 공개 릴리스는 정책 변경이 없다면 `AGPL-3.0-only`를 사용한다.
