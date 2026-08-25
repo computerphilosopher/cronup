@@ -1,5 +1,7 @@
 # BYOC Cron Dead-Man Switch Implementation Plan
 
+> **Status:** Implemented in commit `2cee95a`. The checklist below records the implementation scope; the canonical behavior is in `docs/specs/cronup-alpha.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the uptime scaffold with a Healthchecks-style cron heartbeat subset deployed to the customer's Cloudflare account.

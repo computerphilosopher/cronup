@@ -1,4 +1,6 @@
-# CronUp Slack Alerts and Deploy Button MVP Design
+# Historical: CronUp Slack Alerts and Deploy Button MVP Design
+
+> **Superseded:** This design was written for the uptime MVP. Slack remains an optional notification channel, but the monitored signal is now a cron heartbeat rather than an HTTP probe. See [the current MVP specification](../../specs/cronup-alpha.md).
 
 ## Background
 

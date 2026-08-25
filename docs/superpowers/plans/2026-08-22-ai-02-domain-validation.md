@@ -1,4 +1,6 @@
-# AI-02 Uptime Domain and Validation Implementation Plan
+# Historical: AI-02 Uptime Domain and Validation Implementation Plan
+
+> **Superseded:** This plan covered the earlier uptime monitor input contract. The current check and schedule validation is in `worker/validation.ts` and specified in `docs/specs/cronup-alpha.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

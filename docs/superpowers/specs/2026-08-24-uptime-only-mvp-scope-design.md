@@ -1,4 +1,6 @@
-# CronUp Uptime-only MVP Scope Design
+# Historical: CronUp Uptime-only MVP Scope Design
+
+> **Superseded:** CronUp no longer monitors external HTTP uptime. The current MVP monitors explicit cron success pings; see [the current MVP specification](../../specs/cronup-alpha.md). This document is retained to explain the earlier product decision.
 
 ## 배경
 

@@ -1,4 +1,6 @@
-# AI-01 Cloudflare Worker and React Scaffold Design
+# Historical: AI-01 Cloudflare Worker and React Scaffold Design
+
+> **Superseded:** This document describes the initial scaffold only. The current product contract is [the BYOC cron dead-man switch MVP](../../specs/cronup-alpha.md). It is retained as an implementation history record.
 
 ## Goal
 

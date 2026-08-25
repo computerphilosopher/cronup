@@ -1,4 +1,6 @@
-# AI-01 Cloudflare Worker and React Scaffold Implementation Plan
+# Historical: AI-01 Cloudflare Worker and React Scaffold Implementation Plan
+
+> **Superseded:** This plan describes the original scaffold. The current product is documented in `docs/specs/cronup-alpha.md`; this file remains as build history.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

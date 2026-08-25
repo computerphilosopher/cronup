@@ -1,4 +1,6 @@
-# AI-04 Basic Auth and Common Errors Implementation Plan
+# Historical: AI-04 Basic Auth and Common Errors Implementation Plan
+
+> **Superseded:** This plan references the earlier uptime route names. Basic Auth remains part of the current product; the canonical routes and behavior are documented in [the MVP specification](../../specs/cronup-alpha.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
