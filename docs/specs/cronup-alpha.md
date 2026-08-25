@@ -6,9 +6,17 @@ CronUp monitors scheduled jobs from outside the machine where they run. A job se
 
 CronUp is deployed to the customer's own Cloudflare account. The MVP does not require a monitoring VPS, host agent, Prometheus server, time-series database, or central SaaS control plane. Cloudflare usage is best-effort and subject to the customer's plan limits; no zero-cost or availability guarantee is made.
 
+Functionally, the MVP is intentionally a focused subset of the established cron heartbeat model: create a check, call its ping URL after success, evaluate the expected schedule, and notify on a missed ping. The product distinction is deployment and ownership rather than a new monitoring protocol.
+
 The MVP validates one question:
 
 > Can a small VPS operator deploy a private external watchdog and detect a missed cron job without operating additional monitoring infrastructure?
+
+Positioning:
+
+> A Healthchecks-style cron dead-man switch that runs in your own Cloudflare account.
+
+The value proposition is BYOC deployment, private state, no always-on monitoring server, and no separate monitoring-infrastructure bill. It does not promise feature parity with Healthchecks.io or Cronitor.
 
 Every monitored job must explicitly call its generated ping URL.
 
