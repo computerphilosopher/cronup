@@ -1,18 +1,23 @@
-export type MonitorStatus = "pending" | "healthy" | "down";
+export type CheckStatus = "new" | "up" | "late" | "down" | "paused";
 
-export type CreateMonitorRequest = {
+export type Schedule =
+  | { kind: "period"; periodSeconds: number }
+  | { kind: "cron"; expression: string; timezone: string };
+
+export type CreateCheckRequest = {
   name: string;
-  url: string;
+  schedule: Schedule;
+  graceSeconds: number;
 };
 
-export type MonitorDto = {
+export type CheckDto = {
   id: string;
   name: string;
-  url: string;
-  status: MonitorStatus;
+  pingToken: string;
+  schedule: Schedule;
+  graceSeconds: number;
+  status: CheckStatus;
+  lastPingAt: number | null;
   createdAt: number;
   updatedAt: number;
-  lastCheckedAt: number | null;
-  statusCode: number | null;
-  latencyMs: number | null;
 };

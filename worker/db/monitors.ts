@@ -1,152 +1,70 @@
-import type { MonitorDto, MonitorStatus } from "../../shared/domain";
+import type { CheckDto, CheckStatus, Schedule } from "../../shared/domain";
 
-type MonitorRow = {
+type CheckRow = {
   id: string;
   name: string;
-  url: string;
-  status: MonitorStatus;
-  last_checked_at: number | null;
-  last_status_code: number | null;
-  last_latency_ms: number | null;
+  ping_token: string;
+  schedule_json: string;
+  grace_seconds: number;
+  status: CheckStatus;
+  last_ping_at: number | null;
   created_at: number;
   updated_at: number;
 };
 
-export type MonitorResultUpdate = {
-  status: Exclude<MonitorStatus, "pending">;
-  checkedAt: number;
-  statusCode: number | null;
-  latencyMs: number | null;
-};
+const columns = "id, name, ping_token, schedule_json, grace_seconds, status, last_ping_at, created_at, updated_at";
 
-const SELECT_MONITOR_COLUMNS = `
-  id,
-  name,
-  url,
-  status,
-  last_checked_at,
-  last_status_code,
-  last_latency_ms,
-  created_at,
-  updated_at
-`;
-
-function toMonitorDto(row: MonitorRow): MonitorDto {
+function dto(row: CheckRow): CheckDto {
   return {
     id: row.id,
     name: row.name,
-    url: row.url,
+    pingToken: row.ping_token,
+    schedule: JSON.parse(row.schedule_json) as Schedule,
+    graceSeconds: row.grace_seconds,
     status: row.status,
-    lastCheckedAt: row.last_checked_at,
-    statusCode: row.last_status_code,
-    latencyMs: row.last_latency_ms,
+    lastPingAt: row.last_ping_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
-export async function createMonitor(
-  db: D1Database,
-  monitor: MonitorDto,
-): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO monitors (
-        id,
-        name,
-        url,
-        status,
-        last_checked_at,
-        last_status_code,
-        last_latency_ms,
-        created_at,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      monitor.id,
-      monitor.name,
-      monitor.url,
-      monitor.status,
-      monitor.lastCheckedAt,
-      monitor.statusCode,
-      monitor.latencyMs,
-      monitor.createdAt,
-      monitor.updatedAt,
-    )
-    .run();
+export async function createMonitor(db: D1Database, check: CheckDto): Promise<void> {
+  await db.prepare(`INSERT INTO checks (id, name, ping_token, schedule_json, grace_seconds, status, last_ping_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(check.id, check.name, check.pingToken, JSON.stringify(check.schedule), check.graceSeconds, check.status, check.lastPingAt, check.createdAt, check.updatedAt).run();
 }
 
-export async function listMonitors(db: D1Database): Promise<MonitorDto[]> {
-  const result = await db
-    .prepare(
-      `SELECT ${SELECT_MONITOR_COLUMNS}
-       FROM monitors
-       ORDER BY created_at ASC, id ASC`,
-    )
-    .all<MonitorRow>();
-
-  return result.results.map(toMonitorDto);
+export async function listMonitors(db: D1Database): Promise<CheckDto[]> {
+  const result = await db.prepare(`SELECT ${columns} FROM checks ORDER BY created_at ASC, id ASC`).all<CheckRow>();
+  return result.results.map(dto);
 }
 
-export async function deleteMonitor(
-  db: D1Database,
-  id: string,
-): Promise<boolean> {
-  const result = await db
-    .prepare("DELETE FROM monitors WHERE id = ?")
-    .bind(id)
-    .run();
+export async function getMonitorByToken(db: D1Database, token: string): Promise<CheckDto | null> {
+  const row = await db.prepare(`SELECT ${columns} FROM checks WHERE ping_token = ?`).bind(token).first<CheckRow>();
+  return row ? dto(row) : null;
+}
 
+export async function deleteMonitor(db: D1Database, id: string): Promise<boolean> {
+  const result = await db.prepare("DELETE FROM checks WHERE id = ?").bind(id).run();
   return result.meta.changes > 0;
 }
 
-export async function selectDueMonitors(
-  db: D1Database,
-  limit = 20,
-): Promise<MonitorDto[]> {
-  const result = await db
-    .prepare(
-      `SELECT ${SELECT_MONITOR_COLUMNS}
-       FROM monitors
-       ORDER BY
-         last_checked_at IS NOT NULL ASC,
-         last_checked_at ASC,
-         created_at ASC,
-         id ASC
-       LIMIT ?`,
-    )
-    .bind(limit)
-    .all<MonitorRow>();
-
-  return result.results.map(toMonitorDto);
+export async function updatePing(db: D1Database, id: string, at: number): Promise<CheckDto | null> {
+  await db.prepare("UPDATE checks SET status = CASE WHEN status IN ('late', 'down') THEN 'up' ELSE 'up' END, last_ping_at = ?, updated_at = ? WHERE id = ?")
+    .bind(at, at, id).run();
+  const row = await db.prepare(`SELECT ${columns} FROM checks WHERE id = ?`).bind(id).first<CheckRow>();
+  return row ? dto(row) : null;
 }
 
-export async function updateMonitorResult(
-  db: D1Database,
-  id: string,
-  update: MonitorResultUpdate,
-): Promise<boolean> {
-  const result = await db
-    .prepare(
-      `UPDATE monitors
-       SET
-         status = ?,
-         last_checked_at = ?,
-         last_status_code = ?,
-         last_latency_ms = ?,
-         updated_at = ?
-       WHERE id = ?`,
-    )
-    .bind(
-      update.status,
-      update.checkedAt,
-      update.statusCode,
-      update.latencyMs,
-      update.checkedAt,
-      id,
-    )
-    .run();
-
+export async function updateStatus(db: D1Database, id: string, status: CheckStatus, at: number): Promise<boolean> {
+  const result = await db.prepare("UPDATE checks SET status = ?, updated_at = ? WHERE id = ?").bind(status, at, id).run();
   return result.meta.changes > 0;
+}
+
+export async function setPaused(db: D1Database, id: string, paused: boolean, at: number): Promise<boolean> {
+  return updateStatus(db, id, paused ? "paused" : "new", at);
+}
+
+export async function selectMonitors(db: D1Database, limit = 100): Promise<CheckDto[]> {
+  const result = await db.prepare(`SELECT ${columns} FROM checks WHERE status != 'paused' ORDER BY created_at ASC, id ASC LIMIT ?`).bind(limit).all<CheckRow>();
+  return result.results.map(dto);
 }

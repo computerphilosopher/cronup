@@ -1,64 +1,22 @@
 import { describe, expectTypeOf, it } from "vitest";
-import type {
-  CreateMonitorRequest,
-  MonitorDto,
-  MonitorStatus,
-} from "../shared/domain";
+import type { CheckDto, CheckStatus, CreateCheckRequest } from "../shared/domain";
 
-describe("uptime monitor domain", () => {
-  it("defines the supported monitor states", () => {
-    expectTypeOf<MonitorStatus>().toEqualTypeOf<
-      "pending" | "healthy" | "down"
-    >();
-
-    // @ts-expect-error missed belongs to the heartbeat roadmap.
-    const unsupportedStatus: MonitorStatus = "missed";
-    void unsupportedStatus;
+describe("cron check domain", () => {
+  it("defines the Healthchecks-style states", () => {
+    expectTypeOf<CheckStatus>().toEqualTypeOf<"new" | "up" | "late" | "down" | "paused">();
   });
 
-  it("defines the creation request", () => {
-    expectTypeOf<CreateMonitorRequest>().toEqualTypeOf<{
-      name: string;
-      url: string;
-    }>();
-
-    const request: CreateMonitorRequest = {
-      name: "Public website",
-      url: "https://example.com/health",
+  it("defines a period check", () => {
+    const request: CreateCheckRequest = {
+      name: "Nightly backup",
+      schedule: { kind: "period", periodSeconds: 86400 },
+      graceSeconds: 300,
     };
-
-    expectTypeOf(request.url).toBeString();
-
-    // @ts-expect-error url is required.
-    const missingUrl: CreateMonitorRequest = { name: "Public website" };
-    void missingUrl;
-  });
-
-  it("defines the current-state response", () => {
-    expectTypeOf<MonitorDto>().toEqualTypeOf<{
-      id: string;
-      name: string;
-      url: string;
-      status: MonitorStatus;
-      createdAt: number;
-      updatedAt: number;
-      lastCheckedAt: number | null;
-      statusCode: number | null;
-      latencyMs: number | null;
-    }>();
-
-    const monitor: MonitorDto = {
-      id: "monitor-1",
-      name: "Public website",
-      url: "https://example.com/health",
-      status: "pending",
-      createdAt: 1_777_000_000_000,
-      updatedAt: 1_777_000_000_000,
-      lastCheckedAt: null,
-      statusCode: null,
-      latencyMs: null,
+    expectTypeOf(request.schedule.kind).toEqualTypeOf<"period" | "cron">();
+    const check: CheckDto = {
+      id: "check-1", name: request.name, pingToken: "secret", schedule: request.schedule,
+      graceSeconds: request.graceSeconds, status: "new", lastPingAt: null, createdAt: 1, updatedAt: 1,
     };
-
-    expectTypeOf(monitor.status).toEqualTypeOf<MonitorStatus>();
+    expectTypeOf(check.lastPingAt).toEqualTypeOf<number | null>();
   });
 });
