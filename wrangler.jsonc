@@ -3,7 +3,13 @@
   "name": "cronup",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-08-20",
-  "d1_databases": [{ "binding": "DB" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cronup-db",
+      "database_id": "49c11968-d84c-4909-a618-83ac4cd8d030"
+    }
+  ],
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
